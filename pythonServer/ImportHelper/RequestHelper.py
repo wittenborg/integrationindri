@@ -4,7 +4,7 @@ from SPARQLWrapper import SPARQLWrapper, JSON
 import sys
 
 def get_youtube_video_data(api_key: str, watch_ids: list[str]):
-    if len(watch_ids) < 50:
+    if len(watch_ids) <= 50:
         response = requests.get(
             "https://youtube.googleapis.com/youtube/v3/videos",
             params={

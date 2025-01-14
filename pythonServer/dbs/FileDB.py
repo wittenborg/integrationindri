@@ -4,10 +4,18 @@ import pickle
 
 
 class FileDB:
-    def __init__(self, user_id: str):
+    def __init__(self, *argv):
         (head, tail) = os.path.split(__file__)
-        self.path_json = os.path.join(head, f"{user_id}.json")
-        self.path_pkl = os.path.join(head, f"{user_id}.pkl")
+        if len(argv) > 1:
+            t = os.path.join(argv[0], *(argv[1:]))
+            self.path_json = os.path.join(head, f"{t}.json")
+            self.path_pkl = os.path.join(head, f"{t}.pkl")
+        elif len(argv) == 1:
+            self.path_json = os.path.join(head, f"{argv[0]}.json")
+            self.path_pkl = os.path.join(head, f"{argv[0]}.pkl")
+        else:
+            self.path_json = None
+        print(self.path_json)
 
     def upload(self, data) -> None:
         with open(self.path_json, "w") as file:

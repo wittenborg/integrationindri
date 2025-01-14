@@ -238,6 +238,12 @@ class WLPVideo:
          self.watch_id = watch_id
          self.categories = categories
 
+     def __str__(self):
+         return f"{self.watch_id} {self.categories}"
+
+     def __repr__(self):
+         return f"{self.watch_id} {self.categories}"
+
 class WLPImportData:
 
     def __init__(self, user_id: str, data: list[WLPVideo]):
@@ -255,7 +261,8 @@ class ImportJob:
         self.youtube_key = youtube_key
 
         self.user_id = wlp_video_import.user_id
-        self.wlp_videos_batches = split_array(50, wlp_video_import.wlp_videos)
+        self.batch_size = 50
+        self.wlp_videos_batches = split_array(self.batch_size, wlp_video_import.wlp_videos)
 
         self.category_cache = {}
         self.channel_cache = {}
@@ -270,29 +277,37 @@ class ImportJob:
             category_set.update(wlp_video.categories)
 
         # remove categories from set that are already in cache
+        category_tmp = set()
         for category in category_set:
             found_category_in_cache = try_get(category, self.category_cache)
             if found_category_in_cache is not None:
-                category_set.remove(category)
+                category_tmp.add(category)
+
+        category_set = category_set.difference(category_tmp)
 
         # find the missing ones in wikibase
         found_category_in_wikibase = category_exists(list(category_set))
+
         for found_category in found_category_in_wikibase:
             if found_category_in_wikibase[found_category] is None:
                 entity = create_new_item(create_category_wikibase(found_category), self.o_auth, csrf_token)
-                print("category:", entity)
+                # print("new category:", entity)
                 self.category_cache[found_category] = "https://bnwiki.wikibase.cloud/entity/" + entity["entity"]["id"]
             else:
                 self.category_cache[found_category] = found_category_in_wikibase[found_category]
 
     # - assumes cache is always valid
     def aggregate_channels(self, channels: dict, csrf_token):
-        print(channels)
+
         # filter out channels that already exists in cache
+        channels_tmp = []
         for channel_id in channels:
             found_id_in_cache = try_get(channel_id, self.channel_cache)
             if found_id_in_cache is not None:
-                channels.pop(channel_id)
+                channels_tmp.append(channel_id)
+
+        for c_tmp in channels_tmp:
+            channels.pop(c_tmp)
 
         # check if some missing channels already exists in wikibase
         found_channels_in_wikibase = channel_exists(list(channels.keys()))
@@ -304,7 +319,7 @@ class ImportJob:
                     create_channel_wikibase(channels[found_channel]["channel_name"], found_channel),
                     self.o_auth,
                     csrf_token)
-                print("channel:", entity)
+                # print("new channel:", entity)
                 self.channel_cache[found_channel] = "https://bnwiki.wikibase.cloud/entity/" + entity["entity"]["id"]
             else:
                 self.channel_cache[found_channel] = found_channels_in_wikibase[found_channel]
@@ -320,15 +335,15 @@ class ImportJob:
 
         self.aggregate_channels(channels_by_id, csrf_token)
 
-    def remove_existing_videos(self, wlp_videos: list[WLPVideo]):
-        print(str(wlp_videos[0].categories), str(wlp_videos[0].watch_id))
+
+    def remove_existing_videos(self, wlp_videos: list[WLPVideo]) -> list[WLPVideo]:
+        wlp_videos_set = set(list(map(lambda v: f"https://www.youtube.com/watch?v={v.watch_id}", wlp_videos)))
         found_vidoes_in_wikibase = video_exists(
             list(map(lambda v: f"https://www.youtube.com/watch?v={v.watch_id}", wlp_videos)))
-        for found_video in found_vidoes_in_wikibase:
-            if found_vidoes_in_wikibase[found_video] is not None:
-                for wlp_video_index in range(0, len(wlp_videos)):
-                    if f"https://www.youtube.com/watch?v={wlp_videos[wlp_video_index].watch_id}" == found_video:
-                        del wlp_videos[wlp_video_index]
+        found_videos_set = set(list(filter(lambda found_id: found_vidoes_in_wikibase[found_id] is not None, found_vidoes_in_wikibase.keys())))
+        diff_videos_set = wlp_videos_set.difference(found_videos_set)
+        return list(filter(lambda wlp_video: f"https://www.youtube.com/watch?v={wlp_video.watch_id}" in diff_videos_set, wlp_videos))
+
 
     def create_video_by_watch_id(self, video, wlp_videos, csrf_token):
         snippet = video["snippet"]
@@ -375,18 +390,25 @@ class ImportJob:
         wikibase_video_dict = create_wiki_base_video(wikibase_video)
         return create_new_item(wikibase_video_dict, self.o_auth, csrf_token), wikibase_video_dict
 
-    def process_batch(self, wlp_videos: list[WLPVideo]):
+    # would be faster to map wlp_videos to a dict based on watch_id -> would filter dups
+    def process_batch(self, wlp_videos: list[WLPVideo], batch_index):
         copy_wlp_videos = wlp_videos.copy()
         # if we don't do this we create duplicates! overwriting is a use case for later
-        self.remove_existing_videos(wlp_videos)
+        wlp_videos = self.remove_existing_videos(wlp_videos)
+        # print("wlp_videos:", wlp_videos)
+
         if len(wlp_videos) == 0:
             return
 
-        print("wlp_videos:", wlp_videos)
+        # wlp_videos != youtube_videos, because some videos may not exists anymore
         youtube_videos = get_youtube_video_data(self.youtube_key, list(map(lambda v: v.watch_id, wlp_videos)))["items"]
+        # print("youtube_videos_count:", len(youtube_videos))
+        # print("youtube_videos:", list(map(lambda x: x["id"], youtube_videos)))
 
         csrf_token = get_csrf_token(self.o_auth)
         self.update_caches(youtube_videos, wlp_videos, csrf_token)
+        # print("category_cache:", self.category_cache)
+        # print("channel_cache:", self.channel_cache)
 
         failed_entities = {}
         successful_entities = {}
@@ -394,7 +416,6 @@ class ImportJob:
 
         for video in youtube_videos:
             try:
-                csrf_token = get_csrf_token(self.o_auth)
                 (entity, wikibase_dict) = self.create_video_by_watch_id(video, wlp_videos, csrf_token)
                 if entity["success"] != 1:
                     failed_entities[video["id"]] = { "response": entity, "send_data": wikibase_dict }
@@ -408,12 +429,12 @@ class ImportJob:
                 if copy_wlp_videos[wlp_video_index].watch_id == video["id"]:
                     db_semaphore.acquire()
                     db_indri = DatabaseIndri()
-                    db_indri.set_upload_index(self.user_id, wlp_video_index)
+                    db_indri.set_upload_index(self.user_id, self.batch_size * batch_index + wlp_video_index)
                     db_indri.close()
                     db_semaphore.release()
 
         # logging
-        file_db = FileDB(f"log_import_wlp_videos_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
+        file_db = FileDB("logs", f"log_import_wlp_videos_{batch_index}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
         file_db.upload({
             "failed_entities": failed_entities,
             "successful_entities": successful_entities,
@@ -421,8 +442,8 @@ class ImportJob:
         })
 
     def process(self):
-        for batch in self.wlp_videos_batches:
-            self.process_batch(batch)
+        for batchIndex in range(0, len(self.wlp_videos_batches)):
+            self.process_batch(self.wlp_videos_batches[batchIndex], batchIndex)
 
         file_db = FileDB(self.user_id)
         file_db.delete_pickle()
@@ -432,6 +453,7 @@ class ImportJob:
         db_indri.set_upload_finished(self.user_id, True)
         db_indri.close()
         db_semaphore.release()
+        print("DONE")
         return None
 
 def run_import_job(

@@ -12,11 +12,7 @@ data = {
 json_object = str(json.dumps(data))
 print(type(str(json_object)))
 
-a = [1,2,3,4]
-
-def remove_3(l):
-    del l[3]
-
-print(a)
-remove_3(a)
-print(a)
+data1 = {"hello": "world2"}
+data2 = {"hello": "world2"}
+data3 = {"hello": "world3", **data1, **data2}
+print(data3)

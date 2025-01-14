@@ -136,24 +136,28 @@ class Mutation:
 
     @strawberry.mutation
     def start_wlp_videos_import(self, user_id: str) -> UploadAnswer:
-        file_db = FileDB(user_id)
-        wlp_import = file_db.read_pickle()
-        db_semaphore.acquire()
-        db_indri = DatabaseIndri()
-        consumer = db_indri.get_consumer_all(user_id)
-        (_, youtube_key) = db_indri.get_youtube_key(user_id)
-        db_indri.close()
-        db_semaphore.release()
-        auth1 = OAuth1(consumer.consumer_key,
-                       client_secret=consumer.consumer_secret,
-                       resource_owner_key=consumer.access_key,
-                       resource_owner_secret=consumer.access_secret)
-        run_import_job(
-            o_auth=auth1,
-            wlp_video_import=wlp_import,
-            youtube_key=youtube_key
-        )
-        return UploadAnswer(id=wlp_import.user_id, message="Started") # make new id? like upload_id
+        try:
+            file_db = FileDB(user_id)
+            wlp_import = file_db.read_pickle()
+            db_semaphore.acquire()
+            db_indri = DatabaseIndri()
+            consumer = db_indri.get_consumer_all(user_id)
+            (_, youtube_key) = db_indri.get_youtube_key(user_id)
+            db_indri.set_upload_index(user_id, 0)
+            db_indri.close()
+            db_semaphore.release()
+            auth1 = OAuth1(consumer.consumer_key,
+                           client_secret=consumer.consumer_secret,
+                           resource_owner_key=consumer.access_key,
+                           resource_owner_secret=consumer.access_secret)
+            run_import_job(
+                o_auth=auth1,
+                wlp_video_import=wlp_import,
+                youtube_key=youtube_key
+            )
+            return UploadAnswer(id=wlp_import.user_id, message="Started") # make new id? like upload_id
+        except:
+            return UploadAnswer(id=strawberry.ID(user_id), message="Failed")
 
 
 @strawberry.type
@@ -219,7 +223,12 @@ class Query:
         res = dbIndri.get_consumer_all(user_id)
         dbIndri.close()
         db_semaphore.release()
-        if (res is not None) and (res.upload_status is not None):
+        if (res is not None) and res.upload_status:
+            db_semaphore.acquire()
+            dbIndri = DatabaseIndri()
+            dbIndri.set_upload_finished(user_id, None)
+            dbIndri.close()
+            db_semaphore.release()
             return UploadAnswer(id=strawberry.ID(user_id), message="Upload Done")
         elif (res is not None) and (res.upload_index is not None):
             return UploadAnswer(id=strawberry.ID(user_id), message=str(res.upload_index))
