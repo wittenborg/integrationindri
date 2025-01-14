@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-from dbs.DBSIndri import findTableName
+from dbs.DBSIndri import find_table_name
 
 
 class YouTubeData:
@@ -18,7 +18,7 @@ class YouTubeKeysDSL:
     def create_youtube_key_table(self):
         tables = self.cur.execute("SELECT name FROM sqlite_master").fetchall()
         params = {"tableName": "YouTubeKeys"}
-        if not findTableName(params["tableName"], tables):
+        if not find_table_name(params["tableName"], tables):
             self.cur.execute("""
                                 CREATE TABLE :tableName (
                                 userId VARCHAR(255) NOT NULL PRIMARY KEY,

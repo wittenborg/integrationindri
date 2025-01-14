@@ -11,6 +11,8 @@ from dbs.FileDB import FileDB
 from requests_oauthlib import OAuth1
 import datetime
 
+from dbs.dslContext.ImportJobsClassDSL import ImportJobData
+
 
 def base_entity():
     return {
@@ -459,7 +461,8 @@ class ImportJob:
 def run_import_job(
                  o_auth: OAuth1,
                  youtube_key: str,
-                 wlp_video_import: WLPImportData
+                 wlp_video_import: WLPImportData,
+                 job_data: ImportJobData
 ):
     import_job = ImportJob(o_auth, youtube_key, wlp_video_import)
     threading.Thread(target=import_job.process, daemon=True).start()

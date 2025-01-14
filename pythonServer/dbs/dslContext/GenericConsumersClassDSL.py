@@ -1,7 +1,7 @@
 import os
 import sqlite3
 
-from dbs.DBSIndri import findTableName
+from dbs.DBSIndri import find_table_name
 
 
 class Consumer:
@@ -33,7 +33,7 @@ class GenericConsumerDSL:
     def create_consumer_table(self, table_name):
         params = {"tableName": table_name}
         tables = self.cur.execute("SELECT name FROM sqlite_master").fetchall()
-        if not findTableName(table_name, tables):
+        if not find_table_name(table_name, tables):
             self.cur.execute("""
                         CREATE TABLE :tableName (
                         userId VARCHAR(255) NOT NULL PRIMARY KEY,

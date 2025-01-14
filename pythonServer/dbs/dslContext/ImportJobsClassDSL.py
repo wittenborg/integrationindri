@@ -2,7 +2,7 @@ import sqlite3
 import uuid
 import os
 
-from dbs.DBSIndri import findTableName
+from dbs.DBSIndri import find_table_name
 
 
 class ImportJobData:
@@ -25,7 +25,7 @@ class ImportJobsDSL:
     def create_import_jobs_table(self):
         tables = self.cur.execute("SELECT name FROM sqlite_master").fetchall()
         params = {"tableName": "ImportJobs"}
-        if not findTableName(params["tableName"], tables):
+        if not find_table_name(params["tableName"], tables):
             self.cur.execute("""
                                 CREATE TABLE :tableName (
                                 uploadId VARCHAR(255) NOT NULL PRIMARY KEY,
