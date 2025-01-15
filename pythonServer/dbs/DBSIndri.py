@@ -1,22 +1,15 @@
 import sqlite3
-import uuid
 import os
 import threading
-from datetime import datetime
 
 from dbs.dslContext.ImportJobsClassDSL import ImportJobsDSL, ImportJobData
 from dbs.dslContext.UserClassDSL import UserDSL, UserData
 from dbs.dslContext.YouTubeKeysClassDSL import YouTubeKeysDSL
 from dbs.dslContext.YouTubeKeysClassDSL import YouTubeData
-from dslContext.GenericConsumersClassDSL import GenericConsumerDSL
-from dslContext.GenericConsumersClassDSL import Consumer
+from dbs.dslContext.GenericConsumersClassDSL import GenericConsumerDSL
+from dbs.dslContext.GenericConsumersClassDSL import Consumer
 
 
-def find_table_name(table_name, tables):
-    for table in tables:
-        if table_name == table[0]:
-            return True
-    return False
 
 db_semaphore = threading.Semaphore(1)
 
@@ -84,6 +77,9 @@ class DatabaseIndri:
                       file_path: str) -> ImportJobData:
         return self.import_jobs_dsl.create_import_job(user_id, upload_size, file_path)
 
+    def update_import_job(self, upload_id: str,**kwargs):
+        return self.import_jobs_dsl.update_import_job(upload_id, **kwargs)
+
     def set_import_status(self, upload_id: str, upload_status: str):
         return self.import_jobs_dsl.update_import_job_status(upload_id, upload_status)
 
@@ -93,6 +89,11 @@ class DatabaseIndri:
     def get_import_job(self, upload_id: str) -> ImportJobData | None:
         return self.import_jobs_dsl.get_import_job(upload_id)
 
+    def get_latest_import_job(self, user_id: str) -> ImportJobData | None:
+        job_history = self.import_jobs_dsl.get_import_jobs(user_id)
+        for job in job_history:
+            if job.upload_status == "OnGoing":
+                return job
 
     def add_user(self, email: str) -> UserData:
         return self.user_dsl.add_user(email)

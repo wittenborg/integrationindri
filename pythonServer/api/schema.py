@@ -97,6 +97,11 @@ class UploadAnswer:
     message: str
 
 @strawberry.type
+class HasRunningJobsAnswer:
+    upload_id: str
+    message: str
+
+@strawberry.type
 class Mutation:
 
     @strawberry.mutation
@@ -114,9 +119,9 @@ class Mutation:
     @strawberry.mutation
     def create_user(self, email: str) -> User:
         db = DatabaseIndri()
-        (_, user_id) = db.add_user(email)
+        user = db.add_user(email)
         db.close()
-        return User(id=strawberry.ID(user_id), email=email)
+        return User(id=strawberry.ID(user.user_id), email=user.email)
 
     @strawberry.mutation
     def create_or_update_youtube_key(self, key_input: UserYouTubeInput) -> UserYouTubeKey:
@@ -145,29 +150,30 @@ class Mutation:
 
     @strawberry.mutation
     def start_wlp_videos_import(self, user_id: str) -> UploadAnswer:
-        try:
-            file_db = FileDB(user_id)
-            wlp_import = file_db.read_pickle()
-            db_semaphore.acquire()
-            db = DatabaseIndri()
-            consumer = db.get_consumer(db.wikibase, user_id)
-            youtube_data = db.get_youtube_key(user_id)
-            job_data = db.create_import_job(user_id, len(wlp_import.wlpVideos), file_db.path_pkl)
-            db.close()
-            db_semaphore.release()
-            auth1 = OAuth1(client_key=consumer.consumer_key,
-                           client_secret=consumer.consumer_secret,
-                           resource_owner_key=consumer.access_key,
-                           resource_owner_secret=consumer.access_secret)
-            run_import_job(
-                o_auth=auth1,
-                wlp_video_import=wlp_import,
-                youtube_key=youtube_data.key,
-                job_data=job_data
-            )
-            return UploadAnswer(id=wlp_import.user_id, message=f"{job_data.upload_id}") # make new id? like upload_id
-        except:
-            return UploadAnswer(id=strawberry.ID(user_id), message="Failed")
+        #try:
+        file_db = FileDB(user_id)
+        wlp_import: WLPImportData = file_db.read_pickle()
+        db_semaphore.acquire()
+        db = DatabaseIndri()
+        consumer = db.get_consumer(db.wikibase, user_id)
+        youtube_data = db.get_youtube_key(user_id)
+        job_data = db.create_import_job(user_id, len(wlp_import.wlp_videos), file_db.path_pkl)
+        db.close()
+        db_semaphore.release()
+        auth1 = OAuth1(client_key=consumer.consumer_key,
+                       client_secret=consumer.consumer_secret,
+                       resource_owner_key=consumer.access_key,
+                       resource_owner_secret=consumer.access_secret)
+        run_import_job(
+            o_auth=auth1,
+            wlp_video_import=wlp_import,
+            youtube_key=youtube_data.key,
+            job_data=job_data
+        )
+        return UploadAnswer(id=strawberry.ID(wlp_import.user_id), message=f"{job_data.upload_id}") # make new id? like upload_id
+        #except Exception as inst:
+        #    print("Exception:", inst)
+        #    return UploadAnswer(id=strawberry.ID(user_id), message="Failed")
 
 
 @strawberry.type
@@ -222,9 +228,23 @@ class Query:
         db.close()
         db_semaphore.release()
         if job_data is not None:
-            return UploadAnswer(id=strawberry.ID(upload_id), message=job_data.upload_status)
+            return UploadAnswer(id=strawberry.ID(upload_id), message=f"{job_data.upload_index},{job_data.upload_size},{job_data.upload_status}")
         else:
             return UploadAnswer(id=strawberry.ID(upload_id), message="unknown upload id - No upload found")
+
+    @strawberry.field
+    def has_user_running_import(self, user_id: str) -> HasRunningJobsAnswer:
+        print("has_user_running_import")
+        db_semaphore.acquire()
+        db = DatabaseIndri()
+        job_data = db.get_latest_import_job(user_id)
+        print(job_data)
+        db.close()
+        db_semaphore.release()
+        if job_data is not None:
+            return HasRunningJobsAnswer(upload_id=job_data.upload_id, message=f"{job_data.upload_index},{job_data.upload_size}")
+        else:
+            return HasRunningJobsAnswer(upload_id="UNKNOWN", message="No running imports found")
 
 
 schema = strawberry.Schema(query=Query, mutation=Mutation)

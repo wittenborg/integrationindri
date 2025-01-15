@@ -1,6 +1,7 @@
 from uuid import uuid4
 
-from dbs.DBSIndri import find_table_name
+
+from dbs.dslContext.findTableHelper import find_table_name
 
 
 class UserData:
@@ -17,12 +18,12 @@ class UserDSL:
         tables = self.cur.execute("SELECT name FROM sqlite_master").fetchall()
         params = {"tableName": "Users"}
         if not find_table_name(params["tableName"], tables):
-            self.cur.execute("""
-                            CREATE TABLE :tableName (
+            self.cur.execute(f"""
+                            CREATE TABLE {params["tableName"]} (
                             email VARCHAR(255) NOT NULL PRIMARY KEY,
                             userId VARCHAR(255) NOT NULL
                         )
-                        """, params)
+                        """)
             self.con.commit()
 
     def add_user(self, email: str) -> UserData | None:

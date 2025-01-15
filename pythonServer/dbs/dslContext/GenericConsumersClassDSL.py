@@ -1,7 +1,8 @@
 import os
 import sqlite3
 
-from dbs.DBSIndri import find_table_name
+
+from dbs.dslContext.findTableHelper import find_table_name
 
 
 class Consumer:
@@ -34,8 +35,8 @@ class GenericConsumerDSL:
         params = {"tableName": table_name}
         tables = self.cur.execute("SELECT name FROM sqlite_master").fetchall()
         if not find_table_name(table_name, tables):
-            self.cur.execute("""
-                        CREATE TABLE :tableName (
+            self.cur.execute(f"""
+                        CREATE TABLE {params["tableName"]} (
                         userId VARCHAR(255) NOT NULL PRIMARY KEY,
                         consumerKey VARCHAR(255),
                         consumerSecret VARCHAR(255),
@@ -45,43 +46,44 @@ class GenericConsumerDSL:
                         accessKey VARCHAR(255),
                         accessSecret VARCHAR(255)
                     )
-                    """, params)
+                    """)
             self.con.commit()
 
     def set_or_update_generic_consumer(self, table_name, **kwargs) -> Consumer:
-        consumer = self.get_generic_consumer(table_name, kwargs["user_id"])
+        consumer = self.get_generic_consumer(table_name, kwargs["userId"])
         params = {"tableName": table_name,
-                  "userId": kwargs["user_id"],
-                  "consumerKey": consumer.consumer_key,
-                  "consumerSecret": consumer.consumer_secret,
-                  "requestKey": consumer.request_key,
-                  "requestSecret": consumer.request_secret,
-                  "responseQueryString": consumer.response_query_string,
-                  "accessKey": consumer.access_key,
-                  "accessSecret": consumer.access_secret,
-                  **kwargs}
+              "userId": kwargs["userId"],
+              "consumerKey": consumer.consumer_key if consumer else None,
+              "consumerSecret": consumer.consumer_secret if consumer else None,
+              "requestKey": consumer.request_key if consumer else None,
+              "requestSecret": consumer.request_secret if consumer else None,
+              "responseQueryString": consumer.response_query_string if consumer else None,
+              "accessKey": consumer.access_key if consumer else None,
+              "accessSecret": consumer.access_secret if consumer else None,
+              **kwargs}
+        print("params:", params)
         if consumer is None:
             self.cur.execute(
                 f"""
-                        INSERT INTO :table (userId, consumerKey, consumerSecret, requestKey, requestSecret, responseQueryString, accessKey, accessSecret) 
+                        INSERT INTO {table_name} (userId, consumerKey, consumerSecret, requestKey, requestSecret, responseQueryString, accessKey, accessSecret) 
                         VALUES (:userId, :consumerKey, :consumerSecret, :requestKey, :requestSecret, :responseQueryString, :accessKey, :accessSecret)        
                         """, params)
         else:
             self.cur.execute(
                 f"""
-                    UPDATE :tableName 
+                    UPDATE {table_name} 
                     SET consumerKey = :consumerKey, consumerSecret = :consumerSecret, requestKey = :requestKey, requestSecret = :requestSecret, responseQueryString = :responseQueryString, accessKey = :accessKey, accessSecret = :accessSecret
                     WHERE userId = :userId
                     """, params)
         self.con.commit()
-        return self.get_generic_consumer(table_name, kwargs["user_id"])
+        return self.get_generic_consumer(table_name, kwargs["userId"])
 
     def get_generic_consumer(self, table_name, user_id) -> Consumer | None:
         params = {"userId": user_id, "tableName": table_name}
         result = self.cur.execute(
             f"""
                         SELECT userId, consumerKey, consumerSecret, requestKey, requestSecret, responseQueryString, accessKey, accessSecret
-                        FROM :tableName
+                        FROM {table_name}
                         WHERE userId = :userId
                     """, params).fetchone()
         if result is not None:
