@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 
 from isodate import parse_duration
 
@@ -10,6 +11,8 @@ from dbs.FileDB import FileDB
 
 from requests_oauthlib import OAuth1
 import datetime
+
+from dbs.dslContext.ImportJobsClassDSL import ImportJobData
 
 
 def base_entity():
@@ -255,10 +258,12 @@ class ImportJob:
     def __init__(self,
                  o_auth: OAuth1,
                  youtube_key: str,
-                 wlp_video_import: WLPImportData
+                 wlp_video_import: WLPImportData,
+                 job_data: ImportJobData
                  ):
         self.o_auth = o_auth
         self.youtube_key = youtube_key
+        self.job_data = job_data
 
         self.user_id = wlp_video_import.user_id
         self.batch_size = 50
@@ -395,9 +400,19 @@ class ImportJob:
         copy_wlp_videos = wlp_videos.copy()
         # if we don't do this we create duplicates! overwriting is a use case for later
         wlp_videos = self.remove_existing_videos(wlp_videos)
-        # print("wlp_videos:", wlp_videos)
+        print("wlp_videos:", wlp_videos)
+
+        time.sleep(2)
 
         if len(wlp_videos) == 0:
+            db_semaphore.acquire()
+            db = DatabaseIndri()
+            db.update_import_job(
+                self.job_data.upload_id,
+                uploadIndex=self.batch_size * (batch_index + 1),
+            )
+            db.close()
+            db_semaphore.release()
             return
 
         # wlp_videos != youtube_videos, because some videos may not exists anymore
@@ -428,9 +443,12 @@ class ImportJob:
             for wlp_video_index in range(0, len(copy_wlp_videos)):
                 if copy_wlp_videos[wlp_video_index].watch_id == video["id"]:
                     db_semaphore.acquire()
-                    db_indri = DatabaseIndri()
-                    db_indri.set_upload_index(self.user_id, self.batch_size * batch_index + wlp_video_index)
-                    db_indri.close()
+                    db = DatabaseIndri()
+                    db.update_import_job(
+                        self.job_data.upload_id,
+                        uploadIndex=self.batch_size * batch_index + wlp_video_index,
+                    )
+                    db.close()
                     db_semaphore.release()
 
         # logging
@@ -448,10 +466,15 @@ class ImportJob:
         file_db = FileDB(self.user_id)
         file_db.delete_pickle()
         db_semaphore.acquire()
-        db_indri = DatabaseIndri()
-        db_indri.release_authentication(self.user_id)
-        db_indri.set_upload_finished(self.user_id, True)
-        db_indri.close()
+        db = DatabaseIndri()
+        db.release_authentication(db.wikibase, self.user_id)
+        db.update_import_job(
+            self.job_data.upload_id,
+            uploadStatus="Done",
+            uploadIndex=self.job_data.upload_size,
+            endTimestamp=datetime.datetime.now()
+        )
+        db.close()
         db_semaphore.release()
         print("DONE")
         return None
@@ -459,9 +482,11 @@ class ImportJob:
 def run_import_job(
                  o_auth: OAuth1,
                  youtube_key: str,
-                 wlp_video_import: WLPImportData
+                 wlp_video_import: WLPImportData,
+                 job_data: ImportJobData
 ):
-    import_job = ImportJob(o_auth, youtube_key, wlp_video_import)
+    import_job = ImportJob(o_auth, youtube_key, wlp_video_import, job_data)
+    print("!IMPORT THREAD STARTED!")
     threading.Thread(target=import_job.process, daemon=True).start()
 
 

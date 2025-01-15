@@ -16,13 +16,11 @@ app.add_url_rule(
 
 @app.get('/oAuth/<user_id>')
 def get_user_authentication(user_id):
-    print(user_id)
     qs = request.query_string.decode()
-    print("query_string:", qs)
+
     db_semaphore.acquire()
-    db_indri = DatabaseIndri()
-    db_indri.set_response_query_string(user_id, qs)
-    consumer_data = db_indri.get_consumer_all(user_id)
+    db = DatabaseIndri()
+    consumer_data = db.get_consumer(db.wikibase, user_id)
     (access_key, access_secret) = get_access_token(
         consumer_data.consumer_key,
         consumer_data.consumer_secret,
@@ -30,8 +28,8 @@ def get_user_authentication(user_id):
         consumer_data.request_secret,
         qs
     )
-    db_indri.set_access_key_and_secret(user_id, access_key, access_secret)
-    db_indri.close()
+    db.set_qs_and_access_tokens(db.wikibase, user_id, qs, access_key, access_secret)
+    db.close()
     db_semaphore.release()
 
     return f"""

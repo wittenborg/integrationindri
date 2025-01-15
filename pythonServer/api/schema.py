@@ -97,67 +97,83 @@ class UploadAnswer:
     message: str
 
 @strawberry.type
+class HasRunningJobsAnswer:
+    upload_id: str
+    message: str
+
+@strawberry.type
 class Mutation:
 
     @strawberry.mutation
     def create_or_update_consumer(self, consumer_input: UserConsumerInput) -> UserConsumer:
-        dbIndri = DatabaseIndri()
-        dbIndri.set_consumer(consumer_input.id, consumer_input.key, consumer_input.secret)
-        dbIndri.close()
+        db = DatabaseIndri()
+        db.set_or_update_consumer(
+            db.wikibase,
+            userId=consumer_input.id,
+            consumerKey=consumer_input.key,
+            consumerSecret=consumer_input.secret
+        )
+        db.close()
         return UserConsumer(id=strawberry.ID(consumer_input.id), key=consumer_input.key, secret=consumer_input.secret)
 
     @strawberry.mutation
     def create_user(self, email: str) -> User:
-        dbIndri = DatabaseIndri()
-        (_, user_id) = dbIndri.add_user(email)
-        dbIndri.close()
-        return User(id=strawberry.ID(user_id), email=email)
+        db = DatabaseIndri()
+        user = db.add_user(email)
+        db.close()
+        return User(id=strawberry.ID(user.user_id), email=user.email)
 
     @strawberry.mutation
     def create_or_update_youtube_key(self, key_input: UserYouTubeInput) -> UserYouTubeKey:
-        dbIndri = DatabaseIndri()
-        dbIndri.set_youtube_key(key_input.id, key_input.youTubeKey)
-        dbIndri.close()
+        db = DatabaseIndri()
+        db.set_or_update_youtube_key(key_input.id, key_input.youTubeKey)
+        db.close()
         return UserYouTubeKey(id=strawberry.ID(key_input.id), youTubeKey=key_input.youTubeKey)
 
     @strawberry.mutation
     def verify_upload_wlp_videos_to_wiki(self, wlp_import: WLPImportInput) -> AuthenticationConsumerLink:
-        dbIndri = DatabaseIndri()
-        consumer = dbIndri.get_consumer_all(wlp_import.user_id)
+        db = DatabaseIndri()
+        consumer = db.get_consumer(db.wikibase, wlp_import.user_id)
         print(consumer.consumer_key, consumer.consumer_secret)
+
         (redirect, req_key, req_sec) = get_authentication_link(consumer.consumer_key, consumer.consumer_secret)
-        dbIndri.set_requests_token(wlp_import.user_id, req_key, req_sec)
-        dbIndri.close()
+
+        db.set_request_tokens(db.wikibase, wlp_import.user_id, req_key, req_sec)
+        db.close()
+
         wlp_videos = list(map(lambda x: WLPVideo(x.watchId, x.categories), wlp_import.wlpVideos))
         wlp_import_data = WLPImportData(wlp_import.user_id, wlp_videos)
         file_db = FileDB(wlp_import.user_id)
         file_db.upload_pickle(wlp_import_data)
+
         return AuthenticationConsumerLink(id=wlp_import.user_id, url=redirect)
 
     @strawberry.mutation
     def start_wlp_videos_import(self, user_id: str) -> UploadAnswer:
-        try:
-            file_db = FileDB(user_id)
-            wlp_import = file_db.read_pickle()
-            db_semaphore.acquire()
-            db_indri = DatabaseIndri()
-            consumer = db_indri.get_consumer_all(user_id)
-            (_, youtube_key) = db_indri.get_youtube_key(user_id)
-            db_indri.set_upload_index(user_id, 0)
-            db_indri.close()
-            db_semaphore.release()
-            auth1 = OAuth1(consumer.consumer_key,
-                           client_secret=consumer.consumer_secret,
-                           resource_owner_key=consumer.access_key,
-                           resource_owner_secret=consumer.access_secret)
-            run_import_job(
-                o_auth=auth1,
-                wlp_video_import=wlp_import,
-                youtube_key=youtube_key
-            )
-            return UploadAnswer(id=wlp_import.user_id, message="Started") # make new id? like upload_id
-        except:
-            return UploadAnswer(id=strawberry.ID(user_id), message="Failed")
+        #try:
+        file_db = FileDB(user_id)
+        wlp_import: WLPImportData = file_db.read_pickle()
+        db_semaphore.acquire()
+        db = DatabaseIndri()
+        consumer = db.get_consumer(db.wikibase, user_id)
+        youtube_data = db.get_youtube_key(user_id)
+        job_data = db.create_import_job(user_id, len(wlp_import.wlp_videos), file_db.path_pkl)
+        db.close()
+        db_semaphore.release()
+        auth1 = OAuth1(client_key=consumer.consumer_key,
+                       client_secret=consumer.consumer_secret,
+                       resource_owner_key=consumer.access_key,
+                       resource_owner_secret=consumer.access_secret)
+        run_import_job(
+            o_auth=auth1,
+            wlp_video_import=wlp_import,
+            youtube_key=youtube_data.key,
+            job_data=job_data
+        )
+        return UploadAnswer(id=strawberry.ID(wlp_import.user_id), message=f"{job_data.upload_id}") # make new id? like upload_id
+        #except Exception as inst:
+        #    print("Exception:", inst)
+        #    return UploadAnswer(id=strawberry.ID(user_id), message="Failed")
 
 
 @strawberry.type
@@ -165,75 +181,70 @@ class Query:
 
     @strawberry.field
     def get_user(self, email: str) -> User:
-        dbIndri = DatabaseIndri()
-        user_id = dbIndri.get_user(email)
-        dbIndri.close()
-        return User(id=strawberry.ID(user_id), email=email)
+        db = DatabaseIndri()
+        userData = db.get_user(email)
+        db.close()
+        return User(id=strawberry.ID(userData.user_id), email=email)
 
     @strawberry.field
     def get_consumer_token(self, user_id: str) -> Annotated[
         Union[UserConsumer, NoConsumerRegistered], strawberry.union("HasConsumerAnswer")]:
-        dbIndri = DatabaseIndri()
-        res = dbIndri.get_consumer(user_id)
-        dbIndri.close()
+        db = DatabaseIndri()
+        res = db.get_consumer(db.wikibase, user_id)
+        db.close()
         if res is None:
             return NoConsumerRegistered(id=strawberry.ID(user_id))
-        return UserConsumer(id=strawberry.ID(user_id), key=res[1], secret=res[2])
-
-    @strawberry.field
-    def get_youtube_key(self, user_id: str) -> Annotated[
-        Union[UserYouTubeKey, NoYouTubeKeyRegistered], strawberry.union("HasYouTubeKeyAnswer")]:
-        dbIndri = DatabaseIndri()
-        res = dbIndri.get_youtube_key(user_id)
-        dbIndri.close()
-        if res is None:
-            return NoYouTubeKeyRegistered(id=strawberry.ID(user_id))
-        return UserYouTubeKey(id=strawberry.ID(user_id), youTubeKey=res[1])
+        return UserConsumer(id=strawberry.ID(user_id), key=res.consumer_key, secret=res.consumer_secret)
 
     # deprecated!!
     @strawberry.field
     def get_authentication_link(self, user_id: strawberry.ID) -> AuthenticationConsumerLink:
-        dbIndri = DatabaseIndri()
-        (_, con_key, con_secret) = dbIndri.get_consumer(user_id)
-        (redirect, request_key, request_secret) = get_authentication_link(con_key, con_secret)
-        dbIndri.set_requests_token(user_id, request_key, request_secret)
-        dbIndri.close()
+        db = DatabaseIndri()
+        consumer = db.get_consumer(db.wikibase, user_id)
+        (redirect, request_key, request_secret) = get_authentication_link(consumer.consumer_key, consumer.access_secret)
+        db.set_request_tokens(db.wikibase, user_id, request_key, request_secret)
+        db.close()
         return AuthenticationConsumerLink(id=strawberry.ID(user_id), url=redirect)
 
     @strawberry.field
     def is_authenticated(self, user_id: str) -> AuthenticationAnswer:
         db_semaphore.acquire()
-        dbIndri = DatabaseIndri()
-        res = dbIndri.get_consumer_all(user_id)
-        dbIndri.close()
+        db = DatabaseIndri()
+        consumer = db.get_consumer(db.wikibase, user_id)
+        db.close()
         db_semaphore.release()
-        print("acces_tokens:", res.access_secret, res.access_key, "request_key:", res.request_key)
-        if (res.access_secret is not None) and (res.access_key is not None):
+        if (consumer.access_secret is not None) and (consumer.access_key is not None):
             return AuthenticationAnswer(id=strawberry.ID(user_id), status=AuthenticationStatus.AUTHENTICATED)
-        elif res.request_key is not None and res.response_query_string is None:
-            print("Pending")
+        elif (consumer.request_key is not None) and (consumer.response_query_string is None):
             return AuthenticationAnswer(id=strawberry.ID(user_id), status=AuthenticationStatus.PENDING)
         else:
             return AuthenticationAnswer(id=strawberry.ID(user_id), status=AuthenticationStatus.UNAUTHENTICATED)
 
     @strawberry.field
-    def get_upload_status(self, user_id: str) -> UploadAnswer:
+    def get_upload_status(self, upload_id: str) -> UploadAnswer:
         db_semaphore.acquire()
-        dbIndri = DatabaseIndri()
-        res = dbIndri.get_consumer_all(user_id)
-        dbIndri.close()
+        db = DatabaseIndri()
+        job_data = db.get_import_job(upload_id)
+        db.close()
         db_semaphore.release()
-        if (res is not None) and res.upload_status:
-            db_semaphore.acquire()
-            dbIndri = DatabaseIndri()
-            dbIndri.set_upload_finished(user_id, None)
-            dbIndri.close()
-            db_semaphore.release()
-            return UploadAnswer(id=strawberry.ID(user_id), message="Upload Done")
-        elif (res is not None) and (res.upload_index is not None):
-            return UploadAnswer(id=strawberry.ID(user_id), message=str(res.upload_index))
+        if job_data is not None:
+            return UploadAnswer(id=strawberry.ID(upload_id), message=f"{job_data.upload_index},{job_data.upload_size},{job_data.upload_status}")
         else:
-            return UploadAnswer(id=strawberry.ID(user_id), message="No upload")
+            return UploadAnswer(id=strawberry.ID(upload_id), message="unknown upload id - No upload found")
+
+    @strawberry.field
+    def has_user_running_import(self, user_id: str) -> HasRunningJobsAnswer:
+        print("has_user_running_import")
+        db_semaphore.acquire()
+        db = DatabaseIndri()
+        job_data = db.get_latest_import_job(user_id)
+        print(job_data)
+        db.close()
+        db_semaphore.release()
+        if job_data is not None:
+            return HasRunningJobsAnswer(upload_id=job_data.upload_id, message=f"{job_data.upload_index},{job_data.upload_size}")
+        else:
+            return HasRunningJobsAnswer(upload_id="UNKNOWN", message="No running imports found")
 
 
 schema = strawberry.Schema(query=Query, mutation=Mutation)

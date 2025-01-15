@@ -15,7 +15,7 @@ class FileDB:
             self.path_pkl = os.path.join(head, f"{argv[0]}.pkl")
         else:
             self.path_json = None
-        print(self.path_json)
+
 
     def upload(self, data) -> None:
         with open(self.path_json, "w") as file:

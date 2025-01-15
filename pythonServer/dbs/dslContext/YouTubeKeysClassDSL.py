@@ -1,7 +1,8 @@
 import sqlite3
 import os
 
-from dbs.DBSIndri import findTableName
+
+from dbs.dslContext.findTableHelper import find_table_name
 
 
 class YouTubeData:
@@ -18,13 +19,13 @@ class YouTubeKeysDSL:
     def create_youtube_key_table(self):
         tables = self.cur.execute("SELECT name FROM sqlite_master").fetchall()
         params = {"tableName": "YouTubeKeys"}
-        if not findTableName(params["tableName"], tables):
-            self.cur.execute("""
-                                CREATE TABLE :tableName (
+        if not find_table_name(params["tableName"], tables):
+            self.cur.execute(f"""
+                                CREATE TABLE {params["tableName"]} (
                                 userId VARCHAR(255) NOT NULL PRIMARY KEY,
                                 youTubeKey VARCHAR(255)
                             )
-                            """, params)
+                            """)
             self.con.commit()
 
     def set_or_update_youtube_key(self, user_id: str, key: str) -> YouTubeData:
@@ -35,19 +36,19 @@ class YouTubeKeysDSL:
                 INSERT INTO YouTubeKeys (userId, youTubeKey) VALUES (:userId, :key)
             """, params)
         else:
-            self.con.commit()
             self.cur.execute(
                 f"""
                                 UPDATE YouTubeKeys 
                                 SET youTubeKey = :key
                                 WHERE userId = :userId
                                 """, params)
+        self.con.commit()
         return self.get_youtube_key(user_id)
 
     def get_youtube_key(self, user_id: str) -> YouTubeData | None:
         params = {"userId": user_id}
         result = self.cur.execute(f"""
-            SELECT userId, youTubeKey FROM YouTubeKeys WHERE userId = :userID
+            SELECT userId, youTubeKey FROM YouTubeKeys WHERE userId = :userId
         """, params).fetchone()
         if result is not None:
             return YouTubeData(result[0], result[1])
