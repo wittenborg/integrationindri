@@ -488,21 +488,3 @@ def run_import_job(
     import_job = ImportJob(o_auth, youtube_key, wlp_video_import, job_data)
     print("!IMPORT THREAD STARTED!")
     threading.Thread(target=import_job.process, daemon=True).start()
-
-
-if __name__ == "__main__":
-    """
-    import_job = ImportJob(
-        o_auth=None,
-        csrf_token=None,
-        youtube_key="AIzaSyBDb9q9lMnzeIbNauMLhCN2Gn1HHITRxo4",
-        wlp_video_import=WLPImportInput(wlpVideos=[WLPVideo(watchId="fhbShczKosk",
-                                                            categories=['Economics', 'Philosophy', 'Political Science',
-                                                                        'Social Science', 'Humanities'])],
-                                        user_id="asd")
-    )
-
-    import_job.process_batch([WLPVideo(watchId="fhbShczKosk",
-                                       categories=['Economics', 'Philosophy', 'Political Science', 'Social Science',
-                                                   'Humanities'])])
-    """
