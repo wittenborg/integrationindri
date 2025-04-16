@@ -24,7 +24,7 @@ flask --app server run
 
 ## NGROK
 
- - To get the authorization to work locally, you need a account at ngrok [https://ngrok.com/](https://ngrok.com/)
+ - To get the authorization to work locally, you need an account at ngrok [https://ngrok.com/](https://ngrok.com/)
  - Install and follow the setup on ngrok [https://dashboard.ngrok.com/get-started/setup/](https://dashboard.ngrok.com/get-started/setup/)
  - Then register a static domain name and use the following command:
 ```
