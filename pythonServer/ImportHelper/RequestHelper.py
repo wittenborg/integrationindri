@@ -122,19 +122,3 @@ def create_new_item(data, o_auth1, token):
         auth=o_auth1
     )
     return response.json()
-
-if __name__ == "__main__":
-    """
-    res = category_exists([])
-    print(res)
-    res = channel_exists(["UCesjlAoEgN_Sz_cKTvKEmmw", "asdasd"])
-    print(res)
-    res = video_exists(["https://www.youtube.com/watch?v=FuV3ysSKOsw", "https://www.youtube.com/watch?v=nVm_arH33F0", "https://www.youtube.com/watch?v=Fasdweaacx"])
-    print(res)
-
-    """
-    api_key = "AIzaSyBDb9q9lMnzeIbNauMLhCN2Gn1HHITRxo4"
-    watch_ids = ["fAMktPJVILw", "0XON4wIvkAM"]
-    res = get_youtube_video_data(api_key, watch_ids)
-    print(json.dumps(res))
-
