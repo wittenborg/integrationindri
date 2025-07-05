@@ -6,7 +6,7 @@ For the other building blocks of the infrastructure see:
 
 For the code used to analyze the survey in this thesis, see: [https://github.com/xEatos/survey-auswertung](https://github.com/xEatos/survey-auswertung)
 
-If you would like to cite this work:
+<!-- If you would like to cite this work:
 ```
 @article{stehr_digitale_2025,
 	title = {Eine digitale {Wissensinfrastruktur} zur {Bereitstellung} von {Informationen} über wissenschaftliche {Videos} und {Podcasts}},
@@ -19,7 +19,7 @@ If you would like to cite this work:
 	year = {2025},
 	note = {Publisher: Hannover : Gottfried Wilhelm Leibniz Universität},
 }
-```
+``` -->
 
 ## Setup
 
